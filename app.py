@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, after_this_request
 from werkzeug.utils import secure_filename
 import os
 import PyPDF2
@@ -18,12 +18,6 @@ except ImportError:
 
 app = Flask(__name__, static_folder='.', static_url_path='')
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['OUTPUT_FOLDER'] = 'outputs'
-
-# Create directories
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs(app.config['OUTPUT_FOLDER'], exist_ok=True)
 
 ALLOWED_EXTENSIONS = {
     'pdf': ['pdf'],
@@ -32,6 +26,17 @@ ALLOWED_EXTENSIONS = {
 
 def allowed_file(filename, file_type):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS[file_type]
+
+def send_file_and_cleanup(file_path, filename):
+    @after_this_request
+    def remove_file(response):
+        try:
+            os.unlink(file_path)
+        except Exception:
+            pass
+        return response
+    
+    return send_file(file_path, as_attachment=True, download_name=filename)
 
 @app.route('/')
 def index():
@@ -59,14 +64,14 @@ def merge_pdf():
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_filename = f'merged_pdf_{timestamp}.pdf'
-        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        output_path = tempfile.mktemp(suffix='.pdf')
         
         with open(output_path, 'wb') as output_file:
             merger.write(output_file)
         
         merger.close()
         
-        return send_file(output_path, as_attachment=True, download_name=output_filename)
+        return send_file_and_cleanup(output_path, output_filename)
     
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -97,7 +102,7 @@ def jpg_to_pdf():
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_filename = f'images_to_pdf_{timestamp}.pdf'
-        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        output_path = tempfile.mktemp(suffix='.pdf')
         
         c = canvas.Canvas(output_path, pagesize=page_dims)
         page_width, page_height = page_dims
@@ -148,7 +153,7 @@ def jpg_to_pdf():
         
         c.save()
         
-        return send_file(output_path, as_attachment=True, download_name=output_filename)
+        return send_file_and_cleanup(output_path, output_filename)
     
     except Exception as e:
         return jsonify({'error': f'JPG to PDF conversion failed: {str(e)}'}), 500
@@ -171,13 +176,13 @@ def pdf_to_ppt():
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_filename = f'pdf_to_ppt_{timestamp}.pptx'
-        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        output_path = tempfile.mktemp(suffix='.pptx')
         
         convert_pdf_to_pptx(temp_input.name, output_path)
         
         os.unlink(temp_input.name)
         
-        return send_file(output_path, as_attachment=True, download_name=output_filename)
+        return send_file_and_cleanup(output_path, output_filename)
     
     except Exception as e:
         return jsonify({'error': f'PDF to PowerPoint conversion failed: {str(e)}'}), 500
@@ -255,12 +260,12 @@ def add_page_numbers():
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_filename = f'numbered_pdf_{timestamp}.pdf'
-        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        output_path = tempfile.mktemp(suffix='.pdf')
         
         add_page_numbers_to_pdf(temp_input.name, output_path, position, start_page)
         os.unlink(temp_input.name)
         
-        return send_file(output_path, as_attachment=True, download_name=output_filename)
+        return send_file_and_cleanup(output_path, output_filename)
     
     except Exception as e:
         return jsonify({'error': f'Add page numbers failed: {str(e)}'}), 500
@@ -314,12 +319,12 @@ def add_watermark():
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_filename = f'watermarked_pdf_{timestamp}.pdf'
-        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        output_path = tempfile.mktemp(suffix='.pdf')
         
         add_watermark_to_pdf(temp_input.name, output_path, watermark_text, opacity)
         os.unlink(temp_input.name)
         
-        return send_file(output_path, as_attachment=True, download_name=output_filename)
+        return send_file_and_cleanup(output_path, output_filename)
     
     except Exception as e:
         return jsonify({'error': f'Add watermark failed: {str(e)}'}), 500
@@ -339,7 +344,6 @@ def add_watermark_to_pdf(input_path, output_path, watermark_text, opacity):
         can.translate(300, 400)
         can.rotate(45)
         
-        # Calculate text width for centering
         text_width = can.stringWidth(watermark_text, "Helvetica-Bold", 50)
         can.drawString(-text_width/2, 0, watermark_text)
         
@@ -376,12 +380,12 @@ def crop_pdf():
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_filename = f'cropped_pdf_{timestamp}.pdf'
-        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        output_path = tempfile.mktemp(suffix='.pdf')
         
         crop_pdf_pages(temp_input.name, output_path, top, bottom, left, right)
         os.unlink(temp_input.name)
         
-        return send_file(output_path, as_attachment=True, download_name=output_filename)
+        return send_file_and_cleanup(output_path, output_filename)
     
     except Exception as e:
         return jsonify({'error': f'Crop PDF failed: {str(e)}'}), 500
@@ -426,12 +430,12 @@ def unlock_pdf():
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_filename = f'unlocked_pdf_{timestamp}.pdf'
-        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        output_path = tempfile.mktemp(suffix='.pdf')
         
         unlock_pdf_file(temp_input.name, output_path, password)
         os.unlink(temp_input.name)
         
-        return send_file(output_path, as_attachment=True, download_name=output_filename)
+        return send_file_and_cleanup(output_path, output_filename)
     
     except Exception as e:
         return jsonify({'error': f'Unlock PDF failed: {str(e)}'}), 500
@@ -471,12 +475,12 @@ def protect_pdf():
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_filename = f'protected_pdf_{timestamp}.pdf'
-        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        output_path = tempfile.mktemp(suffix='.pdf')
         
         protect_pdf_file(temp_input.name, output_path, password)
         os.unlink(temp_input.name)
         
-        return send_file(output_path, as_attachment=True, download_name=output_filename)
+        return send_file_and_cleanup(output_path, output_filename)
     
     except Exception as e:
         return jsonify({'error': f'Protect PDF failed: {str(e)}'}), 500
@@ -513,12 +517,12 @@ def sign_pdf():
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_filename = f'signed_pdf_{timestamp}.pdf'
-        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        output_path = tempfile.mktemp(suffix='.pdf')
         
         sign_pdf_file(temp_input.name, output_path, signature_text, position)
         os.unlink(temp_input.name)
         
-        return send_file(output_path, as_attachment=True, download_name=output_filename)
+        return send_file_and_cleanup(output_path, output_filename)
     
     except Exception as e:
         return jsonify({'error': f'Sign PDF failed: {str(e)}'}), 500
@@ -528,7 +532,7 @@ def sign_pdf_file(input_path, output_path, signature_text, position):
     writer = PyPDF2.PdfWriter()
     
     for i, page in enumerate(reader.pages):
-        if i == len(reader.pages) - 1:  # Sign last page only
+        if i == len(reader.pages) - 1:
             packet = io.BytesIO()
             can = canvas.Canvas(packet, pagesize=letter)
             
@@ -538,7 +542,7 @@ def sign_pdf_file(input_path, output_path, signature_text, position):
                 x, y = 400, 50
             elif position == 'top-left':
                 x, y = 50, 750
-            else:  # top-right
+            else:
                 x, y = 400, 750
             
             can.setFont("Helvetica-Bold", 12)
