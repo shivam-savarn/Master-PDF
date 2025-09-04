@@ -338,9 +338,12 @@ def add_watermark_to_pdf(input_path, output_path, watermark_text, opacity):
         can.saveState()
         can.translate(300, 400)
         can.rotate(45)
-        can.drawCentredText(0, 0, watermark_text)
-        can.restoreState()
         
+        # Calculate text width for centering
+        text_width = can.stringWidth(watermark_text, "Helvetica-Bold", 50)
+        can.drawString(-text_width/2, 0, watermark_text)
+        
+        can.restoreState()
         can.save()
         
         packet.seek(0)
@@ -398,6 +401,154 @@ def crop_pdf_pages(input_path, output_path, top, bottom, left, right):
         
         page.cropbox.lower_left = (crop_left, crop_bottom)
         page.cropbox.upper_right = (crop_right, crop_top)
+        
+        writer.add_page(page)
+    
+    with open(output_path, 'wb') as output_file:
+        writer.write(output_file)
+
+@app.route('/unlock-pdf', methods=['POST'])
+def unlock_pdf():
+    try:
+        files = request.files.getlist('files')
+        if not files:
+            return jsonify({'error': 'No PDF file provided'}), 400
+            
+        file = files[0]
+        if not allowed_file(file.filename, 'pdf'):
+            return jsonify({'error': 'Invalid PDF file'}), 400
+        
+        password = request.form.get('password', '')
+        
+        temp_input = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        file.save(temp_input.name)
+        temp_input.close()
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_filename = f'unlocked_pdf_{timestamp}.pdf'
+        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        
+        unlock_pdf_file(temp_input.name, output_path, password)
+        os.unlink(temp_input.name)
+        
+        return send_file(output_path, as_attachment=True, download_name=output_filename)
+    
+    except Exception as e:
+        return jsonify({'error': f'Unlock PDF failed: {str(e)}'}), 500
+
+def unlock_pdf_file(input_path, output_path, password):
+    reader = PyPDF2.PdfReader(input_path)
+    
+    if reader.is_encrypted:
+        if not reader.decrypt(password):
+            raise Exception('Invalid password')
+    
+    writer = PyPDF2.PdfWriter()
+    for page in reader.pages:
+        writer.add_page(page)
+    
+    with open(output_path, 'wb') as output_file:
+        writer.write(output_file)
+
+@app.route('/protect-pdf', methods=['POST'])
+def protect_pdf():
+    try:
+        files = request.files.getlist('files')
+        if not files:
+            return jsonify({'error': 'No PDF file provided'}), 400
+            
+        file = files[0]
+        if not allowed_file(file.filename, 'pdf'):
+            return jsonify({'error': 'Invalid PDF file'}), 400
+        
+        password = request.form.get('password', '')
+        if not password:
+            return jsonify({'error': 'Password is required'}), 400
+        
+        temp_input = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        file.save(temp_input.name)
+        temp_input.close()
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_filename = f'protected_pdf_{timestamp}.pdf'
+        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        
+        protect_pdf_file(temp_input.name, output_path, password)
+        os.unlink(temp_input.name)
+        
+        return send_file(output_path, as_attachment=True, download_name=output_filename)
+    
+    except Exception as e:
+        return jsonify({'error': f'Protect PDF failed: {str(e)}'}), 500
+
+def protect_pdf_file(input_path, output_path, password):
+    reader = PyPDF2.PdfReader(input_path)
+    writer = PyPDF2.PdfWriter()
+    
+    for page in reader.pages:
+        writer.add_page(page)
+    
+    writer.encrypt(password)
+    
+    with open(output_path, 'wb') as output_file:
+        writer.write(output_file)
+
+@app.route('/sign-pdf', methods=['POST'])
+def sign_pdf():
+    try:
+        files = request.files.getlist('files')
+        if not files:
+            return jsonify({'error': 'No PDF file provided'}), 400
+            
+        file = files[0]
+        if not allowed_file(file.filename, 'pdf'):
+            return jsonify({'error': 'Invalid PDF file'}), 400
+        
+        signature_text = request.form.get('signatureText', 'SIGNED')
+        position = request.form.get('position', 'bottom-right')
+        
+        temp_input = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        file.save(temp_input.name)
+        temp_input.close()
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_filename = f'signed_pdf_{timestamp}.pdf'
+        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        
+        sign_pdf_file(temp_input.name, output_path, signature_text, position)
+        os.unlink(temp_input.name)
+        
+        return send_file(output_path, as_attachment=True, download_name=output_filename)
+    
+    except Exception as e:
+        return jsonify({'error': f'Sign PDF failed: {str(e)}'}), 500
+
+def sign_pdf_file(input_path, output_path, signature_text, position):
+    reader = PyPDF2.PdfReader(input_path)
+    writer = PyPDF2.PdfWriter()
+    
+    for i, page in enumerate(reader.pages):
+        if i == len(reader.pages) - 1:  # Sign last page only
+            packet = io.BytesIO()
+            can = canvas.Canvas(packet, pagesize=letter)
+            
+            if position == 'bottom-left':
+                x, y = 50, 50
+            elif position == 'bottom-right':
+                x, y = 400, 50
+            elif position == 'top-left':
+                x, y = 50, 750
+            else:  # top-right
+                x, y = 400, 750
+            
+            can.setFont("Helvetica-Bold", 12)
+            can.drawString(x, y, f"Digitally Signed: {signature_text}")
+            can.drawString(x, y-15, f"Date: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+            can.save()
+            
+            packet.seek(0)
+            overlay = PyPDF2.PdfReader(packet)
+            page.merge_page(overlay.pages[0])
         
         writer.add_page(page)
     

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>PDF Master - Client Side</title>
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+    <script src="https://unpkg.com/@pdf-lib/fontkit@1.1.1/dist/fontkit.umd.min.js"></script>
+</head>
+<body>
+    <h1>PDF Master - Client Side</h1>
+    <input type="file" id="pdfInput" accept=".pdf" multiple>
+    <button onclick="mergePDFs()">Merge PDFs</button>
+    <button onclick="addPageNumbers()">Add Page Numbers</button>
+    
+    <script>
+        async function mergePDFs() {
+            const files = document.getElementById('pdfInput').files;
+            if (files.length < 2) return alert('Select at least 2 PDFs');
+            
+            const mergedPdf = await PDFLib.PDFDocument.create();
+            
+            for (const file of files) {
+                const arrayBuffer = await file.arrayBuffer();
+                const pdf = await PDFLib.PDFDocument.load(arrayBuffer);
+                const pages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+                pages.forEach(page => mergedPdf.addPage(page));
+            }
+            
+            const pdfBytes = await mergedPdf.save();
+            downloadPDF(pdfBytes, 'merged.pdf');
+        }
+        
+        async function addPageNumbers() {
+            const files = document.getElementById('pdfInput').files;
+            if (files.length !== 1) return alert('Select one PDF');
+            
+            const arrayBuffer = await files[0].arrayBuffer();
+            const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+            const pages = pdfDoc.getPages();
+            
+            pages.forEach((page, index) => {
+                page.drawText(`${index + 1}`, {
+                    x: 500,
+                    y: 50,
+                    size: 12
+                });
+            });
+            
+            const pdfBytes = await pdfDoc.save();
+            downloadPDF(pdfBytes, 'numbered.pdf');
+        }
+        
+        function downloadPDF(pdfBytes, filename) {
+            const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+        }
+    </script>
+</body>
+</html>
