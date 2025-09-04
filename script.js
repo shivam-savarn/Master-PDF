@@ -476,6 +476,10 @@ class PDFMaster {
             // Get endpoint URL
             const endpoint = this.getEndpoint();
             
+            if (!endpoint) {
+                throw new Error('No endpoint configured for this tool');
+            }
+            
             // Make request with progress simulation
             this.simulateProgress();
             
@@ -578,6 +582,28 @@ class PDFMaster {
                 const mergeOrder = document.getElementById('mergeOrder')?.value || 'name';
                 formData.append('mergeOrder', mergeOrder);
                 break;
+            case 'add-page-numbers':
+                const position = document.getElementById('numberPosition')?.value || 'bottom-right';
+                const startPage = document.getElementById('startingNumber')?.value || '1';
+                formData.append('position', position);
+                formData.append('startPage', startPage);
+                break;
+            case 'add-watermark':
+                const watermarkText = document.getElementById('watermarkText')?.value || 'WATERMARK';
+                const opacity = document.getElementById('watermarkOpacity')?.value || '50';
+                formData.append('watermarkText', watermarkText);
+                formData.append('opacity', parseFloat(opacity) / 100);
+                break;
+            case 'crop-pdf':
+                const top = document.getElementById('cropTop')?.value || '0';
+                const bottom = document.getElementById('cropBottom')?.value || '0';
+                const left = document.getElementById('cropLeft')?.value || '0';
+                const right = document.getElementById('cropRight')?.value || '0';
+                formData.append('top', top);
+                formData.append('bottom', bottom);
+                formData.append('left', left);
+                formData.append('right', right);
+                break;
             case 'edit-pdf':
                 const editMode = document.getElementById('editMode')?.value || 'text';
                 formData.append('editMode', editMode);
@@ -598,6 +624,16 @@ class PDFMaster {
                     formData.append(`edit_${index}_y`, y);
                 });
                 break;
+            case 'remove-pages':
+                const pagesToRemove = document.getElementById('pagesToRemove')?.value || '';
+                formData.append('pagesToRemove', pagesToRemove);
+                break;
+            case 'pdf-to-jpg':
+                const imageQuality = document.getElementById('imageQuality')?.value || 'medium';
+                const pagesToConvert = document.getElementById('pagesToConvert')?.value || 'all';
+                formData.append('imageQuality', imageQuality);
+                formData.append('pagesToConvert', pagesToConvert);
+                break;
         }
     }
 
@@ -606,9 +642,30 @@ class PDFMaster {
             'merge': '/merge-pdf',
             'jpg-to-pdf': '/jpg-to-pdf',
             'compress': '/compress-pdf',
-            'edit-pdf': '/edit-pdf'
+            'edit-pdf': '/edit-pdf',
+            'remove-pages': '/remove-pages',
+            'word-to-pdf': '/word-to-pdf',
+            'ppt-to-pdf': '/ppt-to-pdf',
+            'excel-to-pdf': '/excel-to-pdf',
+            'pdf-to-jpg': '/pdf-to-jpg',
+            'pdf-to-word': '/pdf-to-word',
+            'pdf-to-ppt': '/pdf-to-ppt',
+            'pdf-to-excel': '/pdf-to-excel',
+            'add-page-numbers': '/add-page-numbers',
+            'add-watermark': '/add-watermark',
+            'crop-pdf': '/crop-pdf'
         };
-        return endpoints[this.currentTool] || '/process';
+        
+        console.log('Current tool:', this.currentTool);
+        console.log('Endpoint:', endpoints[this.currentTool]);
+        
+        if (!endpoints[this.currentTool]) {
+            console.error('No endpoint found for tool:', this.currentTool);
+            alert(`Error: No endpoint configured for ${this.currentTool}`);
+            return null;
+        }
+        
+        return endpoints[this.currentTool];
     }
 
     getDownloadFilename() {
@@ -617,7 +674,18 @@ class PDFMaster {
             'merge': `merged_pdf_${timestamp}.pdf`,
             'jpg-to-pdf': `images_to_pdf_${timestamp}.pdf`,
             'compress': `compressed_pdf_${timestamp}.pdf`,
-            'edit-pdf': `edited_pdf_${timestamp}.pdf`
+            'edit-pdf': `edited_pdf_${timestamp}.pdf`,
+            'remove-pages': `pages_removed_${timestamp}.pdf`,
+            'word-to-pdf': `word_to_pdf_${timestamp}.pdf`,
+            'ppt-to-pdf': `ppt_to_pdf_${timestamp}.pdf`,
+            'excel-to-pdf': `excel_to_pdf_${timestamp}.pdf`,
+            'pdf-to-jpg': `pdf_to_jpg_${timestamp}.zip`,
+            'pdf-to-word': `pdf_to_word_${timestamp}.docx`,
+            'pdf-to-ppt': `pdf_to_ppt_${timestamp}.pptx`,
+            'pdf-to-excel': `pdf_to_excel_${timestamp}.xlsx`,
+            'add-page-numbers': `numbered_pdf_${timestamp}.pdf`,
+            'add-watermark': `watermarked_pdf_${timestamp}.pdf`,
+            'crop-pdf': `cropped_pdf_${timestamp}.pdf`
         };
         return filenames[this.currentTool] || `processed_${timestamp}.pdf`;
     }

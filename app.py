@@ -48,24 +48,19 @@ def merge_pdf():
         if len(files) < 2:
             return jsonify({'error': 'At least 2 PDF files required'}), 400
         
-        # Validate files
         for file in files:
             if not allowed_file(file.filename, 'pdf'):
                 return jsonify({'error': f'Invalid file: {file.filename}'}), 400
         
-        # Create PDF merger
         merger = PyPDF2.PdfMerger()
         
-        # Add files to merger
         for file in files:
             merger.append(file)
         
-        # Generate output filename
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_filename = f'merged_pdf_{timestamp}.pdf'
         output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
         
-        # Write merged PDF
         with open(output_path, 'wb') as output_file:
             merger.write(output_file)
         
@@ -79,25 +74,17 @@ def merge_pdf():
 @app.route('/jpg-to-pdf', methods=['POST'])
 def jpg_to_pdf():
     try:
-        print("Starting JPG to PDF conversion...")
         files = request.files.getlist('files')
         page_size = request.form.get('pageSize', 'A4')
         orientation = request.form.get('orientation', 'portrait')
         
-        print(f"Received {len(files)} files, page_size: {page_size}, orientation: {orientation}")
-        
         if not files or len(files) == 0:
-            print("No files provided")
             return jsonify({'error': 'No files provided'}), 400
         
-        # Validate files
         for file in files:
-            print(f"Processing file: {file.filename}")
             if not file.filename or not allowed_file(file.filename, 'image'):
-                print(f"Invalid file: {file.filename}")
                 return jsonify({'error': f'Invalid file: {file.filename}'}), 400
         
-        # Set page dimensions
         if page_size == 'A4':
             page_dims = A4
         elif page_size == 'Letter':
@@ -108,36 +95,23 @@ def jpg_to_pdf():
         if orientation == 'landscape':
             page_dims = (page_dims[1], page_dims[0])
         
-        print(f"Page dimensions: {page_dims}")
-        
-        # Generate output filename
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_filename = f'images_to_pdf_{timestamp}.pdf'
         output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
         
-        print(f"Output path: {output_path}")
-        
-        # Create PDF
         c = canvas.Canvas(output_path, pagesize=page_dims)
         page_width, page_height = page_dims
         
         for i, file in enumerate(files):
             try:
-                print(f"Processing image {i+1}/{len(files)}: {file.filename}")
-                
-                # Save uploaded file temporarily
                 temp_input = tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1])
                 file.save(temp_input.name)
                 temp_input.close()
                 
-                # Open and process image
                 img = Image.open(temp_input.name)
-                print(f"Image mode: {img.mode}, size: {img.size}")
                 
-                # Convert to RGB if necessary
                 if img.mode != 'RGB':
                     if img.mode in ('RGBA', 'LA'):
-                        # Create white background
                         background = Image.new('RGB', img.size, (255, 255, 255))
                         if img.mode == 'RGBA':
                             background.paste(img, mask=img.split()[-1])
@@ -147,10 +121,8 @@ def jpg_to_pdf():
                     else:
                         img = img.convert('RGB')
                 
-                # Get image dimensions
                 img_width, img_height = img.size
                 
-                # Calculate scaling to fit page while maintaining aspect ratio
                 scale_x = (page_width - 40) / img_width
                 scale_y = (page_height - 40) / img_height
                 scale = min(scale_x, scale_y)
@@ -158,315 +130,280 @@ def jpg_to_pdf():
                 new_width = img_width * scale
                 new_height = img_height * scale
                 
-                # Center image on page
                 x = (page_width - new_width) / 2
                 y = (page_height - new_height) / 2
                 
-                print(f"Scaled dimensions: {new_width}x{new_height} at ({x}, {y})")
-                
-                # Save processed image temporarily
                 temp_output = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
                 img.save(temp_output.name, 'JPEG', quality=95)
                 temp_output.close()
                 
-                # Draw image on PDF
                 c.drawImage(temp_output.name, x, y, new_width, new_height)
                 c.showPage()
                 
-                # Clean up temp files
                 os.unlink(temp_input.name)
                 os.unlink(temp_output.name)
-                
-                print(f"Successfully processed image {i+1}")
                     
             except Exception as img_error:
-                print(f"Error processing image {file.filename}: {str(img_error)}")
                 return jsonify({'error': f'Error processing image {file.filename}: {str(img_error)}'}), 500
         
         c.save()
-        print(f"PDF saved successfully: {output_path}")
         
         return send_file(output_path, as_attachment=True, download_name=output_filename)
     
     except Exception as e:
-        print(f"JPG to PDF conversion failed: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return jsonify({'error': f'JPG to PDF conversion failed: {str(e)}'}), 500
 
-@app.route('/compress-pdf', methods=['POST'])
-def compress_pdf():
+@app.route('/pdf-to-ppt', methods=['POST'])
+def pdf_to_ppt():
     try:
-        print("Starting PDF compression...")
         files = request.files.getlist('files')
         if not files:
-            file = request.files.get('file')
-            if file:
-                files = [file]
-        
-        if not files:
-            print("No files provided for compression")
             return jsonify({'error': 'No PDF file provided'}), 400
             
-        file = files[0]  # Take first file for compression
-        compression_level = request.form.get('compressionLevel', 'medium')
-        
-        print(f"Compressing file: {file.filename}, level: {compression_level}")
+        file = files[0]
         
         if not allowed_file(file.filename, 'pdf'):
-            print(f"Invalid PDF file: {file.filename}")
             return jsonify({'error': 'Invalid PDF file'}), 400
         
-        # Save uploaded file temporarily
         temp_input = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
         file.save(temp_input.name)
         temp_input.close()
         
-        original_size = os.path.getsize(temp_input.name)
-        print(f"Original file size: {original_size} bytes")
-        
-        # Generate output filename
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_filename = f'compressed_pdf_{timestamp}.pdf'
+        output_filename = f'pdf_to_ppt_{timestamp}.pptx'
         output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
         
-        # Try PyMuPDF compression first (better results)
-        if PYMUPDF_AVAILABLE:
-            try:
-                print("Using PyMuPDF for compression...")
-                doc = fitz.open(temp_input.name)
-                
-                # Set compression options based on level
-                if compression_level == 'low':
-                    # Light compression
-                    doc.save(output_path, garbage=1, clean=1)
-                elif compression_level == 'medium':
-                    # Medium compression
-                    doc.save(output_path, garbage=2, clean=1, deflate=1)
-                else:  # high compression
-                    # Maximum compression
-                    doc.save(output_path, garbage=4, clean=1, deflate=1, linear=1)
-                
-                doc.close()
-                
-            except Exception as pymupdf_error:
-                print(f"PyMuPDF compression failed: {pymupdf_error}")
-                # Fall back to PyPDF2
-                compress_with_pypdf2(temp_input.name, output_path, compression_level)
-        else:
-            # Use PyPDF2 compression
-            compress_with_pypdf2(temp_input.name, output_path, compression_level)
+        convert_pdf_to_pptx(temp_input.name, output_path)
         
-        # Clean up temp file
         os.unlink(temp_input.name)
-        
-        # Check compression results
-        compressed_size = os.path.getsize(output_path)
-        compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
-        
-        print(f"PDF compression completed successfully")
-        print(f"Original size: {original_size} bytes")
-        print(f"Compressed size: {compressed_size} bytes")
-        print(f"Compression ratio: {compression_ratio:.1f}% reduction")
         
         return send_file(output_path, as_attachment=True, download_name=output_filename)
     
     except Exception as e:
-        print(f"PDF compression failed: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'PDF compression failed: {str(e)}'}), 500
+        return jsonify({'error': f'PDF to PowerPoint conversion failed: {str(e)}'}), 500
 
-def compress_with_pypdf2(input_path, output_path, compression_level):
-    """Fallback compression using PyPDF2"""
-    print("Using PyPDF2 for compression...")
+def convert_pdf_to_pptx(pdf_path, pptx_path):
+    try:
+        from pptx import Presentation
+        
+        if not PYMUPDF_AVAILABLE:
+            raise Exception("PyMuPDF is required for PDF to PowerPoint conversion")
+        
+        doc_pdf = fitz.open(pdf_path)
+        prs = Presentation()
+        
+        for page_num in range(len(doc_pdf)):
+            try:
+                page = doc_pdf[page_num]
+                
+                slide_layout = prs.slide_layouts[1]
+                slide = prs.slides.add_slide(slide_layout)
+                
+                title_placeholder = slide.shapes.title
+                content_placeholder = slide.placeholders[1]
+                
+                text_dict = page.get_text("dict")
+                
+                all_text = []
+                for block in text_dict["blocks"]:
+                    if "lines" in block:
+                        block_text = ""
+                        for line in block["lines"]:
+                            line_text = ""
+                            for span in line["spans"]:
+                                line_text += span["text"]
+                            if line_text.strip():
+                                block_text += line_text.strip() + " "
+                        
+                        if block_text.strip():
+                            all_text.append(block_text.strip())
+                
+                if all_text:
+                    title_placeholder.text = f"Page {page_num + 1}"
+                    content_placeholder.text = "\n".join(all_text[:10])
+                else:
+                    title_placeholder.text = f"Page {page_num + 1}"
+                    content_placeholder.text = "No text content found on this page."
+                    
+            except Exception as page_error:
+                print(f"Error processing page {page_num}: {str(page_error)}")
+                continue
+        
+        doc_pdf.close()
+        prs.save(pptx_path)
+        
+    except Exception as e:
+        raise Exception(f"PDF to PowerPoint conversion error: {str(e)}")
+
+@app.route('/add-page-numbers', methods=['POST'])
+def add_page_numbers():
+    try:
+        files = request.files.getlist('files')
+        if not files:
+            return jsonify({'error': 'No PDF file provided'}), 400
+            
+        file = files[0]
+        if not allowed_file(file.filename, 'pdf'):
+            return jsonify({'error': 'Invalid PDF file'}), 400
+        
+        position = request.form.get('position', 'bottom-right')
+        start_page = int(request.form.get('startPage', 1))
+        
+        temp_input = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
+        file.save(temp_input.name)
+        temp_input.close()
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_filename = f'numbered_pdf_{timestamp}.pdf'
+        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
+        
+        add_page_numbers_to_pdf(temp_input.name, output_path, position, start_page)
+        os.unlink(temp_input.name)
+        
+        return send_file(output_path, as_attachment=True, download_name=output_filename)
+    
+    except Exception as e:
+        return jsonify({'error': f'Add page numbers failed: {str(e)}'}), 500
+
+def add_page_numbers_to_pdf(input_path, output_path, position, start_page):
     reader = PyPDF2.PdfReader(input_path)
     writer = PyPDF2.PdfWriter()
     
-    for page in reader.pages:
-        if compression_level in ['medium', 'high']:
-            try:
-                page.compress_content_streams()
-            except:
-                pass
+    for i, page in enumerate(reader.pages):
+        packet = io.BytesIO()
+        can = canvas.Canvas(packet, pagesize=letter)
+        
+        if position == 'top-left':
+            x, y = 50, 750
+        elif position == 'top-right':
+            x, y = 500, 750
+        elif position == 'bottom-left':
+            x, y = 50, 50
+        else:
+            x, y = 500, 50
+        
+        page_num = i + start_page
+        can.drawString(x, y, str(page_num))
+        can.save()
+        
+        packet.seek(0)
+        overlay = PyPDF2.PdfReader(packet)
+        page.merge_page(overlay.pages[0])
         writer.add_page(page)
     
     with open(output_path, 'wb') as output_file:
         writer.write(output_file)
 
-@app.route('/edit-pdf', methods=['POST'])
-def edit_pdf():
+@app.route('/add-watermark', methods=['POST'])
+def add_watermark():
     try:
-        print("Starting PDF editing...")
-        
-        if not PYMUPDF_AVAILABLE:
-            return jsonify({'error': 'PDF editing requires PyMuPDF. Please install: pip install PyMuPDF'}), 400
-        
         files = request.files.getlist('files')
         if not files:
             return jsonify({'error': 'No PDF file provided'}), 400
             
         file = files[0]
-        edit_mode = request.form.get('editMode', 'text')
-        
-        # Get edit instructions from form
-        edits = []
-        edit_count = 0
-        while f'edit_{edit_count}_page' in request.form:
-            edit = {
-                'page': int(request.form.get(f'edit_{edit_count}_page', 0)),
-                'old_text': request.form.get(f'edit_{edit_count}_old_text', ''),
-                'new_text': request.form.get(f'edit_{edit_count}_new_text', ''),
-                'x': float(request.form.get(f'edit_{edit_count}_x', 0)),
-                'y': float(request.form.get(f'edit_{edit_count}_y', 0))
-            }
-            edits.append(edit)
-            edit_count += 1
-        
-        print(f"Editing file: {file.filename}, mode: {edit_mode}, {len(edits)} edits")
-        
         if not allowed_file(file.filename, 'pdf'):
             return jsonify({'error': 'Invalid PDF file'}), 400
         
-        # Save uploaded file temporarily
+        watermark_text = request.form.get('watermarkText', 'WATERMARK')
+        opacity = float(request.form.get('opacity', 0.3))
+        
         temp_input = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
         file.save(temp_input.name)
         temp_input.close()
         
-        # Open PDF with PyMuPDF
-        doc = fitz.open(temp_input.name)
-        
-        # Process edits
-        for edit in edits:
-            page_num = edit['page']
-            if page_num < len(doc):
-                page = doc[page_num]
-                
-                if edit_mode == 'text' and edit['old_text'] and edit['new_text']:
-                    # Find and replace text while preserving formatting
-                    seamless_text_edit(page, edit['old_text'], edit['new_text'])
-        
-        # Generate output filename
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_filename = f'edited_pdf_{timestamp}.pdf'
+        output_filename = f'watermarked_pdf_{timestamp}.pdf'
         output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
         
-        # Save edited PDF
-        doc.save(output_path)
-        doc.close()
-        
-        # Clean up temp file
+        add_watermark_to_pdf(temp_input.name, output_path, watermark_text, opacity)
         os.unlink(temp_input.name)
-        
-        print("PDF editing completed successfully")
         
         return send_file(output_path, as_attachment=True, download_name=output_filename)
     
     except Exception as e:
-        print(f"PDF editing failed: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': f'PDF editing failed: {str(e)}'}), 500
+        return jsonify({'error': f'Add watermark failed: {str(e)}'}), 500
 
-def seamless_text_edit(page, old_text, new_text):
-    """Replace text while preserving original font, size, and color"""
-    try:
-        # Get all text instances on the page
-        text_instances = page.get_text("dict")
+def add_watermark_to_pdf(input_path, output_path, watermark_text, opacity):
+    reader = PyPDF2.PdfReader(input_path)
+    writer = PyPDF2.PdfWriter()
+    
+    for page in reader.pages:
+        packet = io.BytesIO()
+        can = canvas.Canvas(packet, pagesize=letter)
         
-        for block in text_instances["blocks"]:
-            if "lines" in block:
-                for line in block["lines"]:
-                    for span in line["spans"]:
-                        span_text = span["text"]
-                        
-                        # Check if this span contains the text to replace
-                        if old_text in span_text:
-                            # Extract original formatting
-                            font = span["font"]
-                            size = span["size"]
-                            flags = span["flags"]
-                            color = span["color"]
-                            
-                            # Get position
-                            bbox = span["bbox"]
-                            x, y = bbox[0], bbox[1]
-                            
-                            # Create a white rectangle to cover old text
-                            page.draw_rect(fitz.Rect(bbox), color=(1, 1, 1), fill=True)
-                            
-                            # Replace text in the span
-                            updated_text = span_text.replace(old_text, new_text)
-                            
-                            # Insert new text with exact same formatting
-                            page.insert_text(
-                                (x, y + size * 0.8),  # Adjust Y position for baseline
-                                updated_text,
-                                fontname=font,
-                                fontsize=size,
-                                color=color
-                            )
-                            
-                            print(f"Replaced '{old_text}' with '{new_text}' using font: {font}, size: {size}")
-                            
-    except Exception as e:
-        print(f"Error in seamless text edit: {str(e)}")
-        # Fallback: simple text insertion
-        page.insert_text((100, 100), f"Edit: {new_text}", fontsize=12)
+        can.setFillAlpha(opacity)
+        can.setFont("Helvetica-Bold", 50)
+        
+        can.saveState()
+        can.translate(300, 400)
+        can.rotate(45)
+        can.drawCentredText(0, 0, watermark_text)
+        can.restoreState()
+        
+        can.save()
+        
+        packet.seek(0)
+        overlay = PyPDF2.PdfReader(packet)
+        page.merge_page(overlay.pages[0])
+        writer.add_page(page)
+    
+    with open(output_path, 'wb') as output_file:
+        writer.write(output_file)
 
-@app.route('/get-pdf-text', methods=['POST'])
-def get_pdf_text():
-    """Extract text from PDF for editing interface"""
+@app.route('/crop-pdf', methods=['POST'])
+def crop_pdf():
     try:
-        if not PYMUPDF_AVAILABLE:
-            return jsonify({'error': 'PDF text extraction requires PyMuPDF'}), 400
-        
         files = request.files.getlist('files')
         if not files:
             return jsonify({'error': 'No PDF file provided'}), 400
             
         file = files[0]
+        if not allowed_file(file.filename, 'pdf'):
+            return jsonify({'error': 'Invalid PDF file'}), 400
         
-        # Save uploaded file temporarily
+        top = float(request.form.get('top', 0)) / 100
+        bottom = float(request.form.get('bottom', 0)) / 100
+        left = float(request.form.get('left', 0)) / 100
+        right = float(request.form.get('right', 0)) / 100
+        
         temp_input = tempfile.NamedTemporaryFile(delete=False, suffix='.pdf')
         file.save(temp_input.name)
         temp_input.close()
         
-        # Open PDF and extract text with positions
-        doc = fitz.open(temp_input.name)
-        pages_data = []
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        output_filename = f'cropped_pdf_{timestamp}.pdf'
+        output_path = os.path.join(app.config['OUTPUT_FOLDER'], output_filename)
         
-        for page_num in range(len(doc)):
-            page = doc[page_num]
-            text_dict = page.get_text("dict")
-            
-            page_texts = []
-            for block in text_dict["blocks"]:
-                if "lines" in block:
-                    for line in block["lines"]:
-                        for span in line["spans"]:
-                            page_texts.append({
-                                'text': span["text"],
-                                'x': span["bbox"][0],
-                                'y': span["bbox"][1],
-                                'font': span["font"],
-                                'size': span["size"],
-                                'color': span["color"]
-                            })
-            
-            pages_data.append({
-                'page': page_num,
-                'texts': page_texts
-            })
-        
-        doc.close()
+        crop_pdf_pages(temp_input.name, output_path, top, bottom, left, right)
         os.unlink(temp_input.name)
         
-        return jsonify({'pages': pages_data})
+        return send_file(output_path, as_attachment=True, download_name=output_filename)
     
     except Exception as e:
-        print(f"PDF text extraction failed: {str(e)}")
-        return jsonify({'error': f'Text extraction failed: {str(e)}'}), 500
+        return jsonify({'error': f'Crop PDF failed: {str(e)}'}), 500
+
+def crop_pdf_pages(input_path, output_path, top, bottom, left, right):
+    reader = PyPDF2.PdfReader(input_path)
+    writer = PyPDF2.PdfWriter()
+    
+    for page in reader.pages:
+        page_width = float(page.mediabox.width)
+        page_height = float(page.mediabox.height)
+        
+        crop_left = page_width * left
+        crop_bottom = page_height * bottom
+        crop_right = page_width * (1 - right)
+        crop_top = page_height * (1 - top)
+        
+        page.cropbox.lower_left = (crop_left, crop_bottom)
+        page.cropbox.upper_right = (crop_right, crop_top)
+        
+        writer.add_page(page)
+    
+    with open(output_path, 'wb') as output_file:
+        writer.write(output_file)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
